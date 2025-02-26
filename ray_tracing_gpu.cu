@@ -51,10 +51,11 @@ __device__ inline float vector_norm(const Vector V)
     return sqrtf(vector_dot_product(V, V));
 }
 
-__global__ void ray_tracing(float L_x, float L_y, float L_z, float W_y, float W_max, float C_x, float C_y, float C_z, float R, int ngrid, long nrays, float *d_matrix, int *d_total_rays)
+__global__ void ray_tracing(float L_x, float L_y, float L_z, float W_y, float W_max, float C_x, float C_y, float C_z, float R, int ngrid, long nrays, float *d_matrix, unsigned long long *d_total_rays)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= nrays) return;
+    if (idx >= nrays)
+        return;
 
     int total_threads = gridDim.x * blockDim.x;
     long base_work = nrays / total_threads;
@@ -68,7 +69,7 @@ __global__ void ray_tracing(float L_x, float L_y, float L_z, float W_y, float W_
     const float dx = (ngrid - 1) / (2 * W_max);
     const float dz = (ngrid - 1) / (2 * W_max);
     const float view_ray_constant = R * R - vector_dot_product(C, C);
-    int total = 0;
+    unsigned long long total = 0;
 
     float phi, cos_theta, sin_theta, dot_prod, t, b;
     float view_ray_equation = 0;
@@ -132,7 +133,7 @@ int main(int argc, char *argv[])
     int NTHREADS_PER_BLOCK = atoi(argv[4]);
 
     float *d_matrix, *matrix = (float *)calloc(NGRID * NGRID, sizeof(float));
-    int *d_total_rays, *total_rays = (int *)calloc(1, sizeof(int));
+    unsigned long long *d_total_rays, *total_rays = (unsigned long long *)calloc(1, sizeof(unsigned long long));
 
     cudaEvent_t start, stop, start_kernel, stop_kernel;
     cudaEventCreate(&start);
@@ -144,10 +145,10 @@ int main(int argc, char *argv[])
     cudaEventRecord(start, 0);
 
     assert(cudaMalloc((void **)&d_matrix, NGRID * NGRID * sizeof(float)) == cudaSuccess);
-    assert(cudaMalloc((void **)&d_total_rays, sizeof(int)) == cudaSuccess);
+    assert(cudaMalloc((void **)&d_total_rays, sizeof(unsigned long long)) == cudaSuccess);
 
     assert(cudaMemset(d_matrix, 0, NGRID * NGRID * sizeof(float)) == cudaSuccess);
-    assert(cudaMemset(d_total_rays, 0, sizeof(int)) == cudaSuccess);
+    assert(cudaMemset(d_total_rays, 0, sizeof(unsigned long long)) == cudaSuccess);
 
     cudaEventRecord(start_kernel, 0);
     ray_tracing<<<NBLOCKS, NTHREADS_PER_BLOCK>>>(4, 4, -1, 2, 2, 0, 12, 0, 6, NGRID, NRAYS, d_matrix, d_total_rays);
@@ -155,7 +156,7 @@ int main(int argc, char *argv[])
     cudaEventRecord(stop_kernel, 0);
 
     assert(cudaMemcpy(matrix, d_matrix, NGRID * NGRID * sizeof(float), cudaMemcpyDeviceToHost) == cudaSuccess);
-    assert(cudaMemcpy(total_rays, d_total_rays, sizeof(int), cudaMemcpyDeviceToHost) == cudaSuccess);
+    assert(cudaMemcpy(total_rays, d_total_rays, sizeof(unsigned long long), cudaMemcpyDeviceToHost) == cudaSuccess);
 
     FILE *file = fopen("matrix_cuda.out", "w");
 
@@ -171,7 +172,7 @@ int main(int argc, char *argv[])
     printf("\nTotal Time of Execution  : %lf (ms)\n", total_time);
     printf("Kernel Time of Execution : %lf (ms)\n", kernel_time);
     printf("Number of Accepted Rays  : %ld\n", NRAYS);
-    printf("Number of Rejected Rays  : %ld\n\n", NRAYS - *total_rays);
+    printf("Number of Rejected Rays  : %ld\n\n", *total_rays - NRAYS);
 
     free(matrix);
     free(total_rays);
