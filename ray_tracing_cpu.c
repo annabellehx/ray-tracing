@@ -19,9 +19,8 @@ int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, do
 
 #ifdef USE_OMP
 #pragma omp parallel num_threads(NTHREADS)
-    {
 #endif
-
+    {
 #ifdef USE_OMP
         double *p_matrix = calloc(ngrid * ngrid, sizeof(double));
 #endif
@@ -32,7 +31,7 @@ int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, do
 #ifdef USE_OMP
         seed_xoshiro256(123456789 + omp_get_thread_num());
 #else
-    seed_xoshiro256(123456789);
+        seed_xoshiro256(123456789);
 #endif
         Vector V, W, I, N, S;
         W.x = W.z = 0;
@@ -78,7 +77,7 @@ int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, do
 #ifdef USE_OMP
             p_matrix[ngrid * i + j] += b;
 #else
-        matrix[ngrid * i + j] += b;
+            matrix[ngrid * i + j] += b;
 #endif
             view_ray_equation = 0;
         }
@@ -89,8 +88,8 @@ int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, do
             matrix[i] += p_matrix[i];
 
         free(p_matrix);
-    }
 #endif
+    }
 
     *total_rays = total;
     return EXIT_SUCCESS;
