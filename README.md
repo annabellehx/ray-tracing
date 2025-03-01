@@ -8,11 +8,11 @@ To build and run the ray tracing programs, use the command `make ray_tracing`.
 
 ### Serial Ray Tracing
 
-- Let `partition = caslake` and `cpus-per-task = 1`. Use the command `srun ./ray_tracing_serial <NRAYS> <NGRID>` in the batchfile.
+- Let `partition = caslake` and `cpus-per-task = 1`. Use the command `srun ./ray_tracing_serial <NRAYS> <NGRID> 1` in the batchfile.
 
 ### Multicore Ray Tracing
 
-- Let `partition = caslake` and `cpus-per-task = 16`. Use the command `srun ./ray_tracing_omp <NRAYS> <NGRID> 16` in the batchfile.
+- Let `partition = caslake` and `cpus-per-task = 16`. Use the command `srun ./ray_tracing_openmp <NRAYS> <NGRID> 16` in the batchfile.
 
 ### GPU Ray Tracing
 

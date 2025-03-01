@@ -6,7 +6,7 @@
 #include "xoshiro128.h"
 #include "xoshiro256.h"
 
-int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, double C_x, double C_y, double C_z, double R, int ngrid, long nrays, double *matrix, long *total_rays, int nthreads)
+int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, double C_x, double C_y, double C_z, double R, int ngrid, long nrays, double *matrix, long *total_rays, int NTHREADS)
 {
     const Vector L = {L_x, L_y, L_z};
     const Vector C = {C_x, C_y, C_z};
@@ -18,13 +18,13 @@ int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, do
     long total = 0;
 
 #ifdef USE_OMP
-#pragma omp parallel num_threads(nthreads)
-#endif
+#pragma omp parallel num_threads(NTHREADS)
     {
+#endif
+
 #ifdef USE_OMP
         double *p_matrix = calloc(ngrid * ngrid, sizeof(double));
 #endif
-
         double phi, cos_phi, sin_phi, cos_theta, sin_theta;
         double dot_prod, t, b, view_ray_equation = 0;
         int i, j;
@@ -32,7 +32,7 @@ int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, do
 #ifdef USE_OMP
         seed_xoshiro256(123456789 + omp_get_thread_num());
 #else
-        seed_xoshiro256(123456789);
+    seed_xoshiro256(123456789);
 #endif
         Vector V, W, I, N, S;
         W.x = W.z = 0;
@@ -78,7 +78,7 @@ int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, do
 #ifdef USE_OMP
             p_matrix[ngrid * i + j] += b;
 #else
-            matrix[ngrid * i + j] += b;
+        matrix[ngrid * i + j] += b;
 #endif
             view_ray_equation = 0;
         }
@@ -100,19 +100,19 @@ int main(int argc, char *argv[])
 {
     if (argc != 4)
     {
-        fprintf(stderr, "Usage: %s <NRAYS> <NGRID> <NCORES> \n", argv[0]);
+        fprintf(stderr, "Usage: %s <NRAYS> <NGRID> <NTHREADS> \n", argv[0]);
         return EXIT_FAILURE;
     }
 
     long NRAYS = atol(argv[1]);
     int NGRID = atoi(argv[2]);
-    int NCORES = atol(argv[3]);
+    int NTHREADS = atol(argv[3]);
 
     double *matrix = (double *)calloc(NGRID * NGRID, sizeof(double));
     long total_rays;
 
     double start = omp_get_wtime();
-    ray_tracing(4, 4, -1, 2, 2, 0, 12, 0, 6, NGRID, NRAYS, matrix, &total_rays, NCORES);
+    ray_tracing(4, 4, -1, 2, 2, 0, 12, 0, 6, NGRID, NRAYS, matrix, &total_rays, NTHREADS);
 
     FILE *file = fopen("matrix.txt", "w");
 

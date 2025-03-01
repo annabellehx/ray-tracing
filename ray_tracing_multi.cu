@@ -5,6 +5,7 @@
 #include <cuda.h>
 #include <assert.h>
 #include <curand_kernel.h>
+#include "mpi.h"
 
 typedef struct Vector
 {
@@ -51,14 +52,14 @@ __device__ inline float vector_norm(const Vector V)
     return sqrtf(vector_dot_product(V, V));
 }
 
-__global__ void ray_tracing(float L_x, float L_y, float L_z, float W_y, float W_max, float C_x, float C_y, float C_z, float R, int ngrid, long nrays, float *d_matrix, unsigned long long *d_total_rays)
+__global__ void ray_tracing(float L_x, float L_y, float L_z, float W_y, float W_max, float C_x, float C_y, float C_z, float R, int ngrid, long nrays, float *d_matrix, unsigned long long *d_total_rays, int rank, int size)
 {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = rank * nrays / size + blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= nrays) return;
 
     int total_threads = gridDim.x * blockDim.x;
-    long base_work = nrays / total_threads;
-    long remainder = nrays % total_threads;
+    long base_work = nrays / size / total_threads;
+    long remainder = nrays / size % total_threads;
     long nrays_thread = (idx < remainder) ? base_work + 1 : base_work;
 
     const Vector L = {L_x, L_y, L_z};
@@ -126,22 +127,29 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    int rank, size;
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    float *g_matrix = NULL;
+    unsigned long long g_total_rays = 0;
+
     long NRAYS = atol(argv[1]);
     int NGRID = atoi(argv[2]);
     int NBLOCKS = atoi(argv[3]);
     int NTHREADS_PER_BLOCK = atoi(argv[4]);
 
-    float *d_matrix, *matrix = (float *)calloc(NGRID * NGRID, sizeof(float));
-    unsigned long long *d_total_rays, *total_rays = (unsigned long long *)calloc(1, sizeof(unsigned long long));
+    float *d_matrix, *l_matrix = (float *)calloc(NGRID * NGRID, sizeof(float));
+    unsigned long long *d_total_rays, *l_total_rays = (unsigned long long *)calloc(1, sizeof(unsigned long long));
+    if (rank == 0) g_matrix = (float *)calloc(NGRID * NGRID, sizeof(float));
 
-    cudaEvent_t start, stop, start_kernel, stop_kernel;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    cudaEvent_t start_kernel, stop_kernel;
     cudaEventCreate(&start_kernel);
     cudaEventCreate(&stop_kernel);
-    float total_time, kernel_time;
+    float kernel_time;
 
-    cudaEventRecord(start, 0);
+    MPI_Barrier(MPI_COMM_WORLD);
+    double start = MPI_Wtime();
 
     assert(cudaMalloc((void **)&d_matrix, NGRID * NGRID * sizeof(float)) == cudaSuccess);
     assert(cudaMalloc((void **)&d_total_rays, sizeof(unsigned long long)) == cudaSuccess);
@@ -150,32 +158,42 @@ int main(int argc, char *argv[])
     assert(cudaMemset(d_total_rays, 0, sizeof(unsigned long long)) == cudaSuccess);
 
     cudaEventRecord(start_kernel, 0);
-    ray_tracing<<<NBLOCKS, NTHREADS_PER_BLOCK>>>(4, 4, -1, 2, 2, 0, 12, 0, 6, NGRID, NRAYS, d_matrix, d_total_rays);
+    ray_tracing<<<NBLOCKS, NTHREADS_PER_BLOCK>>>(4, 4, -1, 2, 2, 0, 12, 0, 6, NGRID, NRAYS, d_matrix, d_total_rays, rank, size);
     cudaDeviceSynchronize();
     cudaEventRecord(stop_kernel, 0);
 
-    assert(cudaMemcpy(matrix, d_matrix, NGRID * NGRID * sizeof(float), cudaMemcpyDeviceToHost) == cudaSuccess);
-    assert(cudaMemcpy(total_rays, d_total_rays, sizeof(unsigned long long), cudaMemcpyDeviceToHost) == cudaSuccess);
+    assert(cudaMemcpy(l_matrix, d_matrix, NGRID * NGRID * sizeof(float), cudaMemcpyDeviceToHost) == cudaSuccess);
+    assert(cudaMemcpy(l_total_rays, d_total_rays, sizeof(unsigned long long), cudaMemcpyDeviceToHost) == cudaSuccess);
 
-    FILE *file = fopen("matrix.txt", "w");
+    MPI_Reduce(l_matrix, g_matrix, NGRID * NGRID, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(l_total_rays, &g_total_rays, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    for (int i = 0; i < NGRID * NGRID; ++i)
-        fprintf(file, "%.2lf ", matrix[i]);
+    if (rank == 0)
+    {
+        FILE *file = fopen("matrix.txt", "w");
 
-    fclose(file);
+        for (int i = 0; i < NGRID * NGRID; ++i)
+            fprintf(file, "%.2lf ", g_matrix[i]);
 
-    cudaEventRecord(stop, 0);
-    cudaEventElapsedTime(&total_time, start, stop);
-    cudaEventElapsedTime(&kernel_time, start_kernel, stop_kernel);
+        fclose(file);
+        free(g_matrix);
 
-    printf("\nTotal Time of Execution  : %lf (ms)\n", total_time);
-    printf("Kernel Time of Execution : %lf (ms)\n", kernel_time);
-    printf("Number of Accepted Rays  : %ld\n", NRAYS);
-    printf("Number of Rejected Rays  : %ld\n\n", *total_rays - NRAYS);
+        double stop = MPI_Wtime();
+        double total_time = 1000 * (stop - start);
+        cudaEventElapsedTime(&kernel_time, start_kernel, stop_kernel);
 
-    free(matrix);
-    free(total_rays);
+        printf("\nTotal Time of Execution  : %lf (ms)\n", total_time);
+        printf("Kernel Time of Execution : %lf (ms)\n", kernel_time);
+        printf("Number of Accepted Rays  : %ld\n", NRAYS);
+        printf("Number of Rejected Rays  : %ld\n\n", g_total_rays - NRAYS);
+    }
+
+    free(l_matrix);
+    free(l_total_rays);
     cudaFree(d_matrix);
     cudaFree(d_total_rays);
+
+    MPI_Finalize();
     return EXIT_SUCCESS;
 }
