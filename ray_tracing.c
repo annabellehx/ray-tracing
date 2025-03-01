@@ -17,19 +17,30 @@ int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, do
     const double view_ray_constant = R * R - vector_dot_product(C, C);
     long total = 0;
 
-#pragma omp parallel num_threads(nthreads) default(none) shared(ngrid, nrays, matrix, total, L, C, W_y, W_max, W_max2, dx, dz, view_ray_constant)
+#ifdef USE_OMP
+#pragma omp parallel num_threads(nthreads)
+#endif
     {
+#ifdef USE_OMP
         double *p_matrix = calloc(ngrid * ngrid, sizeof(double));
+#endif
+
         double phi, cos_phi, sin_phi, cos_theta, sin_theta;
         double dot_prod, t, b, view_ray_equation = 0;
         int i, j;
 
+#ifdef USE_OMP
         seed_xoshiro256(123456789 + omp_get_thread_num());
+#else
+        seed_xoshiro256(123456789);
+#endif
         Vector V, W, I, N, S;
         W.x = W.z = 0;
         W.y = W_y;
 
+#ifdef USE_OMP
 #pragma omp for reduction(+ : total)
+#endif
         for (long k = 0; k < nrays; ++k)
         {
             while (view_ray_equation <= 0 || W.x * W.x >= W_max2 || W.z * W.z >= W_max2)
@@ -64,16 +75,22 @@ int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, do
             i = (W.x + W_max) * dx;
             j = (W.z + W_max) * dz;
 
+#ifdef USE_OMP
             p_matrix[ngrid * i + j] += b;
+#else
+            matrix[ngrid * i + j] += b;
+#endif
             view_ray_equation = 0;
         }
 
+#ifdef USE_OMP
 #pragma omp critical
         for (int i = 0; i < ngrid * ngrid; ++i)
             matrix[i] += p_matrix[i];
 
         free(p_matrix);
     }
+#endif
 
     *total_rays = total;
     return EXIT_SUCCESS;
@@ -83,21 +100,21 @@ int main(int argc, char *argv[])
 {
     if (argc != 4)
     {
-        fprintf(stderr, "Usage: %s <NRAYS> <NGRID> <NTHREADS> \n", argv[0]);
+        fprintf(stderr, "Usage: %s <NRAYS> <NGRID> <NCORES> \n", argv[0]);
         return EXIT_FAILURE;
     }
 
     long NRAYS = atol(argv[1]);
     int NGRID = atoi(argv[2]);
-    int NTHREADS = atol(argv[3]);
+    int NCORES = atol(argv[3]);
 
     double *matrix = (double *)calloc(NGRID * NGRID, sizeof(double));
     long total_rays;
 
     double start = omp_get_wtime();
-    ray_tracing(4, 4, -1, 2, 2, 0, 12, 0, 6, NGRID, NRAYS, matrix, &total_rays, NTHREADS);
+    ray_tracing(4, 4, -1, 2, 2, 0, 12, 0, 6, NGRID, NRAYS, matrix, &total_rays, NCORES);
 
-    FILE *file = fopen("matrix_p.out", "w");
+    FILE *file = fopen("matrix.txt", "w");
 
     for (int i = 0; i < NGRID * NGRID; ++i)
         fprintf(file, "%.2lf ", matrix[i]);
