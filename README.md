@@ -1,4 +1,4 @@
-# Project 2
+# Ray Tracing with OMP and CUDA
 
 Name: Annabelle Huang
 
