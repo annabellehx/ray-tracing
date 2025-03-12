@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <omp.h>
 #include "vector.h"
-#include "xoshiro128.h"
 #include "xoshiro256.h"
 
 int ray_tracing(double L_x, double L_y, double L_z, double W_y, double W_max, double C_x, double C_y, double C_z, double R, int ngrid, long nrays, double *matrix, long *total_rays, int NTHREADS)

@@ -1,9 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
-#include <time.h>
 #include <cuda.h>
-#include <assert.h>
 #include <curand_kernel.h>
 
 typedef struct Vector
@@ -143,19 +140,19 @@ int main(int argc, char *argv[])
 
     cudaEventRecord(start, 0);
 
-    assert(cudaMalloc((void **)&d_matrix, NGRID * NGRID * sizeof(float)) == cudaSuccess);
-    assert(cudaMalloc((void **)&d_total_rays, sizeof(unsigned long long)) == cudaSuccess);
+    cudaMalloc((void **)&d_matrix, NGRID * NGRID * sizeof(float));
+    cudaMalloc((void **)&d_total_rays, sizeof(unsigned long long));
 
-    assert(cudaMemset(d_matrix, 0, NGRID * NGRID * sizeof(float)) == cudaSuccess);
-    assert(cudaMemset(d_total_rays, 0, sizeof(unsigned long long)) == cudaSuccess);
+    cudaMemset(d_matrix, 0, NGRID * NGRID * sizeof(float));
+    cudaMemset(d_total_rays, 0, sizeof(unsigned long long));
 
     cudaEventRecord(start_kernel, 0);
     ray_tracing<<<NBLOCKS, NTHREADS_PER_BLOCK>>>(4, 4, -1, 2, 2, 0, 12, 0, 6, NGRID, NRAYS, d_matrix, d_total_rays);
     cudaDeviceSynchronize();
     cudaEventRecord(stop_kernel, 0);
 
-    assert(cudaMemcpy(matrix, d_matrix, NGRID * NGRID * sizeof(float), cudaMemcpyDeviceToHost) == cudaSuccess);
-    assert(cudaMemcpy(total_rays, d_total_rays, sizeof(unsigned long long), cudaMemcpyDeviceToHost) == cudaSuccess);
+    cudaMemcpy(matrix, d_matrix, NGRID * NGRID * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(total_rays, d_total_rays, sizeof(unsigned long long), cudaMemcpyDeviceToHost);
 
     FILE *file = fopen("matrix.txt", "w");
 
